@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <ESP32Servo.h>
+#include <DHTesp.h>
 
 const char* WIFI_SSID = "Wokwi-GUEST";
 const char* WIFI_PASSWORD = "";
@@ -15,12 +16,17 @@ constexpr uint8_t MOISTURE_PIN = 34;
 constexpr uint8_t GREEN_LED = 26;
 constexpr uint8_t RED_LED = 27;
 constexpr uint8_t BUTTON_PIN = 25;
+constexpr uint8_t DHT_PIN = 14;
+constexpr uint8_t TANK_TRIG = 32;
+constexpr uint8_t TANK_ECHO = 33;
+constexpr uint8_t LIGHT_PIN = 35;
 constexpr int DRY_LIMIT = 35;
 constexpr int WET_LIMIT = 65;
 
 MFRC522 rfid(RFID_SS, RFID_RST);
 Servo valve;
 WebServer server(80);
+DHTesp climate;
 
 enum OperationMode { MANUAL, AUTOMATIC, OBSERVATION };
 OperationMode mode = MANUAL;
@@ -36,6 +42,10 @@ String lastUser = "nenhum";
 String lastEvent = "sistema iniciado";
 unsigned long irrigationStartedAt = 0;
 unsigned long lastButtonAt = 0;
+float airTemperature = NAN;
+float airHumidity = NAN;
+float tankDistance = NAN;
+int lightLevel = 0;
 
 String networkName() {
   return localNetwork ? String(LOCAL_AP_SSID) : String(WIFI_SSID);
@@ -44,6 +54,21 @@ String networkName() {
 int moisturePercent() {
   int raw = analogRead(MOISTURE_PIN);
   return constrain(map(raw, 0, 4095, 0, 100), 0, 100);
+}
+
+void readEnvironmentalSensors() {
+  TempAndHumidity reading = climate.getTempAndHumidity();
+  if (!isnan(reading.temperature)) airTemperature = reading.temperature;
+  if (!isnan(reading.humidity)) airHumidity = reading.humidity;
+
+  digitalWrite(TANK_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TANK_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TANK_TRIG, LOW);
+  unsigned long duration = pulseIn(TANK_ECHO, HIGH, 30000);
+  if (duration > 0) tankDistance = duration * 0.0343f / 2.0f;
+  lightLevel = map(analogRead(LIGHT_PIN), 0, 4095, 0, 100);
 }
 
 String modeName() {
@@ -99,12 +124,17 @@ void evaluateAutomaticMode() {
 
 String html() {
   int moisture = moisturePercent();
+  readEnvironmentalSensors();
   String recommendation = moisture <= DRY_LIMIT ? "irrigar" : moisture >= WET_LIMIT ? "não irrigar" : "observar";
   String page = "<!doctype html><html lang='pt-BR'><meta charset='utf-8'>";
   page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
   page += "<title>Horta IoT Escolar</title><style>body{font-family:Arial;max-width:760px;margin:2rem auto;padding:0 1rem;color:#163020}.card{padding:1rem;margin:1rem 0;border-radius:12px;background:#e8f5e9}button{padding:.7rem 1rem;margin:.3rem;border:0;border-radius:8px;background:#2e7d32;color:#fff}a{text-decoration:none}</style>";
   page += "<h1>Horta IoT Escolar</h1><div class='card'><h2>Monitoramento</h2>";
   page += "<p><b>Umidade simulada:</b> " + String(moisture) + "%</p>";
+  page += "<p><b>Temperatura do ar:</b> " + String(airTemperature, 1) + " °C</p>";
+  page += "<p><b>Umidade do ar:</b> " + String(airHumidity, 1) + "%</p>";
+  page += "<p><b>Distância no reservatório:</b> " + String(tankDistance, 1) + " cm</p>";
+  page += "<p><b>Luminosidade:</b> " + String(lightLevel) + "%</p>";
   page += "<p><b>Recomendação:</b> " + recommendation + "</p>";
   page += "<p><b>Modo:</b> " + modeName() + "</p>";
   page += "<p><b>Rede:</b> " + networkName() + (localNetwork ? " (local/offline)" : " (Wi-Fi)") + "</p>";
@@ -156,6 +186,9 @@ void setup() {
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(TANK_TRIG, OUTPUT);
+  pinMode(TANK_ECHO, INPUT);
+  climate.setup(DHT_PIN, DHTesp::DHT22);
   valve.attach(SERVO_PIN);
   valve.write(0);
   digitalWrite(RED_LED, HIGH);
@@ -183,6 +216,7 @@ void setup() {
 void loop() {
   server.handleClient();
   readRfid();
+  readEnvironmentalSensors();
   evaluateAutomaticMode();
 
   if (digitalRead(BUTTON_PIN) == LOW && millis() - lastButtonAt > 300) {
