@@ -22,6 +22,7 @@ constexpr uint8_t TANK_ECHO = 33;
 constexpr uint8_t LIGHT_PIN = 35;
 constexpr int DRY_LIMIT = 35;
 constexpr int WET_LIMIT = 65;
+constexpr unsigned long SENSOR_INTERVAL_MS = 2000;
 
 MFRC522 rfid(RFID_SS, RFID_RST);
 Servo valve;
@@ -42,6 +43,7 @@ String lastUser = "nenhum";
 String lastEvent = "sistema iniciado";
 unsigned long irrigationStartedAt = 0;
 unsigned long lastButtonAt = 0;
+unsigned long lastSensorReadAt = 0;
 float airTemperature = NAN;
 float airHumidity = NAN;
 float tankDistance = NAN;
@@ -57,6 +59,9 @@ int moisturePercent() {
 }
 
 void readEnvironmentalSensors() {
+  if (millis() - lastSensorReadAt < SENSOR_INTERVAL_MS) return;
+  lastSensorReadAt = millis();
+
   TempAndHumidity reading = climate.getTempAndHumidity();
   if (!isnan(reading.temperature)) airTemperature = reading.temperature;
   if (!isnan(reading.humidity)) airHumidity = reading.humidity;
@@ -67,7 +72,7 @@ void readEnvironmentalSensors() {
   delayMicroseconds(10);
   digitalWrite(TANK_TRIG, LOW);
   unsigned long duration = pulseIn(TANK_ECHO, HIGH, 30000);
-  if (duration > 0) tankDistance = duration * 0.0343f / 2.0f;
+  tankDistance = duration > 0 ? duration * 0.0343f / 2.0f : NAN;
   lightLevel = map(analogRead(LIGHT_PIN), 0, 4095, 0, 100);
 }
 
@@ -133,7 +138,7 @@ String html() {
   page += "<p><b>Umidade simulada:</b> " + String(moisture) + "%</p>";
   page += "<p><b>Temperatura do ar:</b> " + String(airTemperature, 1) + " °C</p>";
   page += "<p><b>Umidade do ar:</b> " + String(airHumidity, 1) + "%</p>";
-  page += "<p><b>Distância no reservatório:</b> " + String(tankDistance, 1) + " cm</p>";
+  page += "<p><b>Distância no reservatório:</b> " + (isnan(tankDistance) ? String("sem leitura") : String(tankDistance, 1) + " cm") + "</p>";
   page += "<p><b>Luminosidade:</b> " + String(lightLevel) + "%</p>";
   page += "<p><b>Recomendação:</b> " + recommendation + "</p>";
   page += "<p><b>Modo:</b> " + modeName() + "</p>";
@@ -144,7 +149,7 @@ String html() {
   page += "<p><b>Último evento:</b> " + lastEvent + "</p></div>";
   page += "<p>Modo: <a href='/mode?value=manual'><button>Manual</button></a><a href='/mode?value=auto'><button>Automático</button></a><a href='/mode?value=observe'><button>Observação</button></a></p>";
   page += "<p><a href='/irrigar'><button>Iniciar irrigação</button></a><a href='/parar'><button>Parar</button></a></p>";
-  page += "<p>O potenciômetro representa o sensor de umidade e o servo representa a válvula ou bomba.</p></html>";
+  page += "<p>O potenciômetro representa a umidade do solo; o servo representa a válvula. O HC-SR04 usa divisor resistivo no ECHO.</p></html>";
   return page;
 }
 
