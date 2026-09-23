@@ -11,7 +11,10 @@
     { "type": "wokwi-pushbutton", "id": "button", "top": 270, "left": 620, "attrs": { "color": "green" } },
     { "type": "wokwi-resistor", "id": "rg", "top": 250, "left": 470, "attrs": { "value": "220" } },
     { "type": "wokwi-resistor", "id": "rr", "top": 330, "left": 470, "attrs": { "value": "220" } },
-    { "type": "board-mfrc522", "id": "rfid1", "top": 83.75, "left": 733.04, "attrs": {} }
+    { "type": "board-mfrc522", "id": "rfid1", "top": 83.75, "left": 733.04, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "climate", "top": 470, "left": 40, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "tank", "top": 470, "left": 260, "attrs": {} },
+    { "type": "wokwi-photoresistor-sensor", "id": "light", "top": 470, "left": 500, "attrs": {} }
   ],
   "connections": [
     [ "esp:3V3", "rfid1:3.3V", "red", [] ],
@@ -34,7 +37,17 @@
     [ "rr:2", "red:A", "green", [] ],
     [ "red:C", "esp:GND.2", "black", [] ],
     [ "esp:25", "button:1.l", "green", [] ],
-    [ "button:2.l", "esp:GND.2", "black", [] ]
+    [ "button:2.l", "esp:GND.2", "black", [] ],
+    [ "esp:3V3", "climate:VCC", "red", [] ],
+    [ "esp:14", "climate:SDA", "green", [] ],
+    [ "esp:GND.2", "climate:GND", "black", [] ],
+    [ "esp:3V3", "tank:VCC", "red", [] ],
+    [ "esp:32", "tank:TRIG", "green", [] ],
+    [ "esp:33", "tank:ECHO", "green", [] ],
+    [ "esp:GND.2", "tank:GND", "black", [] ],
+    [ "esp:3V3", "light:VCC", "red", [] ],
+    [ "esp:35", "light:AO", "green", [] ],
+    [ "esp:GND.2", "light:GND", "black", [] ]
   ],
   "dependencies": {}
 }
