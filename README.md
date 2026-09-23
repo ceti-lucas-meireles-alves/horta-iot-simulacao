@@ -23,6 +23,9 @@ Um protótipo RFID+ESP32 pode identificar usuários, bloquear ações não autor
 | `board-esp32-devkit-c-v4` | Processamento, Wi-Fi, servidor local e controle dos atuadores | Monitorar horta, reservatório, ferramentas e energia |
 | `board-mfrc522` | Leitura de cartões e tags RFID | Identificar alunos e autorizar acesso a espaços ou equipamentos |
 | Potenciômetro | Simulação da umidade do solo | Substituição por sensor capacitivo em etapa física |
+| `wokwi-dht22` | Temperatura e umidade do ar | Avaliar estresse térmico e condições da horta |
+| `wokwi-hc-sr04` | Distância até a água no reservatório | Estimar nível de água com calibração da caixa |
+| `wokwi-photoresistor-sensor` | Luminosidade | Comparar sombra, sol e necessidade de manejo |
 | Servo | Representação de fechadura ou válvula | Acionamento de mecanismo de maquete; bomba real exige driver apropriado |
 
 ## Aplicações possíveis
@@ -33,6 +36,7 @@ Um protótipo RFID+ESP32 pode identificar usuários, bloquear ações não autor
 - registro de equipes responsáveis pela irrigação;
 - controle de uma maquete de porta rural;
 - futura integração com sensores de nível, umidade e consumo de energia.
+- leitura de temperatura, umidade do ar, nível do reservatório e luminosidade pela página local.
 
 ## Interações
 
@@ -57,6 +61,13 @@ O sistema foi planejado para operar localmente. A página web é servida pelo ES
 ## Limites da simulação
 
 O potenciômetro representa um sensor de umidade; o servo representa uma válvula ou bomba. A simulação não valida dimensionamento elétrico, vazão, isolamento, potência do motor ou segurança de uma instalação real.
+
+### Cuidados de montagem real
+
+- O HC-SR04 é alimentado em 5 V e seu sinal `ECHO` passa por um divisor de tensão com dois resistores de 10 kΩ antes de chegar ao GPIO 33 do ESP32.
+- DHT22 e sensor de luminosidade devem usar 3,3 V e GND comum.
+- O servo/bomba deve ter fonte adequada e GND comum; motor de 12 V nunca deve ser ligado diretamente ao ESP32.
+- Para bomba ou motor real, usar MOSFET/relé/ponte H, diodo de proteção e fonte separada conforme corrente do atuador.
 
 O MFRC522 identifica o UID do cartão, não uma pessoa por biometria. Portanto, a associação entre UID e aluno é apenas didática e deve ser protegida em uma instalação real. RFID também não deve ser tratado como autenticação inviolável.
 
