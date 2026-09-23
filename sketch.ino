@@ -14,50 +14,134 @@ constexpr uint8_t MOISTURE_PIN = 34;
 constexpr uint8_t GREEN_LED = 26;
 constexpr uint8_t RED_LED = 27;
 constexpr uint8_t BUTTON_PIN = 25;
+constexpr int DRY_LIMIT = 35;
+constexpr int WET_LIMIT = 65;
 
 MFRC522 rfid(RFID_SS, RFID_RST);
 Servo valve;
 WebServer server(80);
 
+enum OperationMode { MANUAL, AUTOMATIC, OBSERVATION };
+OperationMode mode = MANUAL;
+
+// UIDs dos cartões de teste disponíveis no Wokwi.
+const String authorizedCards[] = { "01020304", "11223344" };
+constexpr size_t authorizedCardCount = sizeof(authorizedCards) / sizeof(authorizedCards[0]);
+
 bool authorized = false;
 bool irrigation = false;
 String lastUser = "nenhum";
-unsigned long lastEvent = 0;
+String lastEvent = "sistema iniciado";
+unsigned long irrigationStartedAt = 0;
+unsigned long lastButtonAt = 0;
 
 int moisturePercent() {
   int raw = analogRead(MOISTURE_PIN);
-  return map(raw, 0, 4095, 0, 100);
+  return constrain(map(raw, 0, 4095, 0, 100), 0, 100);
 }
 
-void setIrrigation(bool enabled) {
-  irrigation = enabled && authorized;
+String modeName() {
+  if (mode == AUTOMATIC) return "automático";
+  if (mode == OBSERVATION) return "observação";
+  return "manual";
+}
+
+bool isCardAuthorized(const String& uid) {
+  for (size_t i = 0; i < authorizedCardCount; i++) {
+    if (uid == authorizedCards[i]) return true;
+  }
+  return false;
+}
+
+void logEvent(const String& event) {
+  lastEvent = event;
+  Serial.printf("EVENTO | modo=%s | umidade=%d%% | usuario=%s | %s\n",
+                modeName().c_str(), moisturePercent(), lastUser.c_str(), event.c_str());
+}
+
+void setIrrigation(bool enabled, const String& reason) {
+  if (enabled && (!authorized || mode == OBSERVATION)) {
+    logEvent("irrigacao bloqueada: sem autorizacao ou modo observacao");
+    return;
+  }
+
+  irrigation = enabled;
   valve.write(irrigation ? 90 : 0);
   digitalWrite(GREEN_LED, irrigation ? HIGH : LOW);
   digitalWrite(RED_LED, irrigation ? LOW : HIGH);
-  lastEvent = millis();
+
+  if (irrigation) {
+    irrigationStartedAt = millis();
+    logEvent("irrigacao iniciada: " + reason);
+  } else {
+    unsigned long seconds = irrigationStartedAt == 0 ? 0 : (millis() - irrigationStartedAt) / 1000;
+    logEvent("irrigacao encerrada: " + reason + ", duracao=" + String(seconds) + "s");
+    irrigationStartedAt = 0;
+  }
+}
+
+void evaluateAutomaticMode() {
+  int moisture = moisturePercent();
+  if (mode != AUTOMATIC || !authorized) return;
+
+  if (!irrigation && moisture <= DRY_LIMIT) {
+    setIrrigation(true, "solo seco");
+  } else if (irrigation && moisture >= WET_LIMIT) {
+    setIrrigation(false, "umidade adequada");
+  }
 }
 
 String html() {
   int moisture = moisturePercent();
-  String state = irrigation ? "IRRIGANDO" : "AGUARDANDO";
-  String access = authorized ? "autorizado" : "não autorizado";
+  String recommendation = moisture <= DRY_LIMIT ? "irrigar" : moisture >= WET_LIMIT ? "não irrigar" : "observar";
   String page = "<!doctype html><html lang='pt-BR'><meta charset='utf-8'>";
   page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  page += "<title>Horta IoT</title><style>body{font-family:Arial;max-width:720px;margin:2rem auto;padding:0 1rem;color:#163020} .card{padding:1rem;margin:1rem 0;border-radius:12px;background:#e8f5e9}button{padding:.7rem 1rem;margin:.3rem;border:0;border-radius:8px;background:#2e7d32;color:#fff}</style>";
-  page += "<h1>Horta IoT Escolar</h1><div class='card'><h2>Status</h2>";
+  page += "<title>Horta IoT Escolar</title><style>body{font-family:Arial;max-width:760px;margin:2rem auto;padding:0 1rem;color:#163020}.card{padding:1rem;margin:1rem 0;border-radius:12px;background:#e8f5e9}button{padding:.7rem 1rem;margin:.3rem;border:0;border-radius:8px;background:#2e7d32;color:#fff}a{text-decoration:none}</style>";
+  page += "<h1>Horta IoT Escolar</h1><div class='card'><h2>Monitoramento</h2>";
   page += "<p><b>Umidade simulada:</b> " + String(moisture) + "%</p>";
-  page += "<p><b>Acesso RFID:</b> " + access + "</p>";
-  page += "<p><b>Último usuário:</b> " + lastUser + "</p>";
-  page += "<p><b>Sistema:</b> " + state + "</p></div>";
+  page += "<p><b>Recomendação:</b> " + recommendation + "</p>";
+  page += "<p><b>Modo:</b> " + modeName() + "</p>";
+  page += String("<p><b>RFID:</b> ") + (authorized ? "autorizado" : "aguardando cartão") + "</p>";
+  page += "<p><b>Usuário:</b> " + lastUser + "</p>";
+  page += "<p><b>Irrigação:</b> " + String(irrigation ? "ativa" : "parada") + "</p>";
+  page += "<p><b>Último evento:</b> " + lastEvent + "</p></div>";
+  page += "<p>Modo: <a href='/mode?value=manual'><button>Manual</button></a><a href='/mode?value=auto'><button>Automático</button></a><a href='/mode?value=observe'><button>Observação</button></a></p>";
   page += "<p><a href='/irrigar'><button>Iniciar irrigação</button></a><a href='/parar'><button>Parar</button></a></p>";
-  page += "<p>O potenciômetro representa o sensor de umidade. O servo representa uma válvula ou bomba.</p></html>";
+  page += "<p>O potenciômetro representa o sensor de umidade e o servo representa a válvula ou bomba.</p></html>";
   return page;
 }
 
 void setupRoutes() {
-  server.on("/", []() { server.send(200, "text/html", html()); });
-  server.on("/irrigar", []() { setIrrigation(true); server.sendHeader("Location", "/"); server.send(302); });
-  server.on("/parar", []() { setIrrigation(false); server.sendHeader("Location", "/"); server.send(302); });
+  server.on("/", []() { server.send(200, "text/html; charset=utf-8", html()); });
+  server.on("/irrigar", []() { setIrrigation(true, "comando web"); server.sendHeader("Location", "/"); server.send(302); });
+  server.on("/parar", []() { setIrrigation(false, "comando web"); server.sendHeader("Location", "/"); server.send(302); });
+  server.on("/mode", []() {
+    String value = server.arg("value");
+    if (value == "auto") mode = AUTOMATIC;
+    else if (value == "observe") mode = OBSERVATION;
+    else mode = MANUAL;
+    if (mode != AUTOMATIC) setIrrigation(false, "mudanca de modo");
+    logEvent("modo alterado para " + modeName());
+    server.sendHeader("Location", "/");
+    server.send(302);
+  });
+}
+
+void readRfid() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+
+  String uid;
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+    uid += String(rfid.uid.uidByte[i], HEX);
+  }
+  uid.toUpperCase();
+  authorized = isCardAuthorized(uid);
+  lastUser = "cartao " + uid;
+  logEvent(authorized ? "acesso autorizado" : "acesso negado");
+  if (!authorized) setIrrigation(false, "cartao nao autorizado");
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
 }
 
 void setup() {
@@ -71,33 +155,24 @@ void setup() {
 
   SPI.begin();
   rfid.PCD_Init();
-
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD, 6);
   while (WiFi.status() != WL_CONNECTED) delay(100);
   Serial.print("Horta IoT online em http://");
   Serial.println(WiFi.localIP());
   setupRoutes();
   server.begin();
+  logEvent("sistema pronto");
 }
 
 void loop() {
   server.handleClient();
+  readRfid();
+  evaluateAutomaticMode();
 
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    setIrrigation(!irrigation);
-    delay(250);
+  if (digitalRead(BUTTON_PIN) == LOW && millis() - lastButtonAt > 300) {
+    lastButtonAt = millis();
+    if (mode == MANUAL) setIrrigation(!irrigation, "botao fisico");
+    else logEvent("botao ignorado fora do modo manual");
   }
-
-  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
-  String uid;
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
-    uid += String(rfid.uid.uidByte[i], HEX);
-  }
-  uid.toUpperCase();
-  authorized = true;
-  lastUser = "cartão " + uid;
-  Serial.println("RFID autorizado: " + uid);
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
+  delay(10);
 }
