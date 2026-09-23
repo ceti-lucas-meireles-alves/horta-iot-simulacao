@@ -1,2 +1,3 @@
 MFRC522@1.4.11
 ESP32Servo@3.0.6
+DHTesp@2.8.0
