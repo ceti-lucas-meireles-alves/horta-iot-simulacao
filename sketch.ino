@@ -6,6 +6,7 @@
 
 const char* WIFI_SSID = "Wokwi-GUEST";
 const char* WIFI_PASSWORD = "";
+const char* LOCAL_AP_SSID = "Horta-IoT-Local";
 
 constexpr uint8_t RFID_SS = 5;
 constexpr uint8_t RFID_RST = 22;
@@ -30,10 +31,15 @@ constexpr size_t authorizedCardCount = sizeof(authorizedCards) / sizeof(authoriz
 
 bool authorized = false;
 bool irrigation = false;
+bool localNetwork = false;
 String lastUser = "nenhum";
 String lastEvent = "sistema iniciado";
 unsigned long irrigationStartedAt = 0;
 unsigned long lastButtonAt = 0;
+
+String networkName() {
+  return localNetwork ? String(LOCAL_AP_SSID) : String(WIFI_SSID);
+}
 
 int moisturePercent() {
   int raw = analogRead(MOISTURE_PIN);
@@ -101,6 +107,7 @@ String html() {
   page += "<p><b>Umidade simulada:</b> " + String(moisture) + "%</p>";
   page += "<p><b>Recomendação:</b> " + recommendation + "</p>";
   page += "<p><b>Modo:</b> " + modeName() + "</p>";
+  page += "<p><b>Rede:</b> " + networkName() + (localNetwork ? " (local/offline)" : " (Wi-Fi)") + "</p>";
   page += String("<p><b>RFID:</b> ") + (authorized ? "autorizado" : "aguardando cartão") + "</p>";
   page += "<p><b>Usuário:</b> " + lastUser + "</p>";
   page += "<p><b>Irrigação:</b> " + String(irrigation ? "ativa" : "parada") + "</p>";
@@ -156,9 +163,18 @@ void setup() {
   SPI.begin();
   rfid.PCD_Init();
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD, 6);
-  while (WiFi.status() != WL_CONNECTED) delay(100);
+  unsigned long wifiStartedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStartedAt < 10000) delay(100);
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(LOCAL_AP_SSID);
+    localNetwork = true;
+    Serial.print("Rede local ativa em http://");
+    Serial.println(WiFi.softAPIP());
+  }
   Serial.print("Horta IoT online em http://");
-  Serial.println(WiFi.localIP());
+  Serial.println(localNetwork ? WiFi.softAPIP() : WiFi.localIP());
   setupRoutes();
   server.begin();
   logEvent("sistema pronto");
