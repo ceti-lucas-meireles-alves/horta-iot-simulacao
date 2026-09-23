@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "author": "CETI Lucas Meireles Alves",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-rfid-rc522", "id": "rfid", "top": -20, "left": 300, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "moisture", "top": 220, "left": 300, "attrs": { "value": "2048" } },
+    { "type": "wokwi-servo", "id": "valve", "top": 230, "left": 0, "attrs": {} },
+    { "type": "wokwi-led", "id": "green", "top": 120, "left": 500, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "red", "top": 180, "left": 500, "attrs": { "color": "red" } },
+    { "type": "wokwi-pushbutton", "id": "button", "top": 330, "left": 500, "attrs": { "color": "green" } },
+    { "type": "wokwi-resistor", "id": "rg", "top": 120, "left": 610, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rr", "top": 180, "left": 610, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:3V3", "rfid:3.3V", "red", [] ],
+    [ "esp:GND.1", "rfid:GND", "black", [] ],
+    [ "esp:18", "rfid:SCK", "green", [] ],
+    [ "esp:19", "rfid:MISO", "green", [] ],
+    [ "esp:23", "rfid:MOSI", "green", [] ],
+    [ "esp:5", "rfid:SDA", "green", [] ],
+    [ "esp:22", "rfid: RST", "green", [] ],
+    [ "esp:34", "moisture:SIG", "green", [] ],
+    [ "esp:3V3", "moisture:VCC", "red", [] ],
+    [ "esp:GND.1", "moisture:GND", "black", [] ],
+    [ "esp:13", "valve:PWM", "green", [] ],
+    [ "esp:5V", "valve:V+", "red", [] ],
+    [ "esp:GND.2", "valve:GND", "black", [] ],
+    [ "esp:26", "rg:1", "green", [] ],
+    [ "rg:2", "green:A", "green", [] ],
+    [ "green:C", "esp:GND.2", "black", [] ],
+    [ "esp:27", "rr:1", "green", [] ],
+    [ "rr:2", "red:A", "green", [] ],
+    [ "red:C", "esp:GND.2", "black", [] ],
+    [ "esp:25", "button:1.l", "green", [] ],
+    [ "button:2.l", "esp:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}
